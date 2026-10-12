@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Iconnect
+Exec=iconnect
+Icon=io.github.edcorp844.iconnect
+Terminal=false
+Type=Application
+Categories=Utility;
+Keywords=GTK;
+StartupNotify=true
+DBusActivatable=true

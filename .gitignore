@@ -1,0 +1,69 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+
+src/config.rs
+
+# Cargo
+Cargo.lock
+# ^ unless this is a binary crate you ship — see note below
+
+# Meson
+/build/
+/_build/
+builddir/
+build/
+.ninja_deps
+.ninja_log
+compile_commands.json
+meson-info/
+meson-logs/
+meson-private/
+subprojects/packagecache/
+subprojects/*/
+!subprojects/*.wrap
+
+# Flatpak
+.flatpak-builder/
+/repo/
+*.flatpak
+*.flatpakrepo
+*.flatpakref
+
+# Flatpak Builder artifacts
+/.flatpak-builder/
+builddir/
+/flatpak-build/
+
+# GNOME / GLib
+*.gresource
+*.gschema.valid
+
+# GResource bundles
+*.gresource
+
+# Translation build artifacts (gettext)
+*.mo
+*.gmo
+/po/*.header
+/po/POTFILES
+/po/*.pot
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Local env
+.env
+.env.local

@@ -1,0 +1,6 @@
+# List of source files containing translatable strings.
+# Please keep this file sorted alphabetically.
+data/io.github.edcorp844.iconnect.desktop.in
+data/io.github.edcorp844.iconnect.metainfo.xml.in
+data/io.github.edcorp844.iconnect.gschema.xml
+src/window.ui
