@@ -1,5 +1,4 @@
 use adw::prelude::*;
-
 use chrono::{DateTime, Local, Utc};
 use gtk::glib;
 use relm4::{prelude::*, Component, ComponentParts, ComponentSender, RelmRemoveAllExt};
@@ -92,7 +91,8 @@ impl Component for MessageThreadWidget {
                         sender.input(MessageThreadInput::SendMessage);
                     }
                 },
-                gtk::Button { set_icon_name: "face-smile-symbolic",
+                gtk::Button {
+                    set_icon_name: "face-smile-symbolic",
                     set_valign: gtk::Align::Center,
                 },
             }
@@ -100,13 +100,12 @@ impl Component for MessageThreadWidget {
     }
 
     fn init(
-        init: Self::Init,
+        _init: Self::Init,
         _root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let model = Self { thread: None };
         let widgets = view_output!();
-
         ComponentParts { model, widgets }
     }
 
@@ -115,7 +114,7 @@ impl Component for MessageThreadWidget {
         widgets: &mut Self::Widgets,
         message: Self::Input,
         sender: ComponentSender<Self>,
-        root: &Self::Root,
+        _root: &Self::Root,
     ) {
         match message {
             MessageThreadInput::SendMessage => {
@@ -128,28 +127,37 @@ impl Component for MessageThreadWidget {
                     if text.trim().is_empty() {
                         return;
                     }
-                    match sender.output(MessageThreadOutput::SendMessage {
+                    let _ = sender.output(MessageThreadOutput::SendMessage {
                         key: key.clone(),
                         body: text,
-                    }) {
-                        Ok(_) => {
-                            widgets.message_text_box.buffer().set_text("");
-                        }
-                        Err(error) => {}
-                    }
+                    });
+                    widgets.message_text_box.buffer().set_text("");
                 }
             }
             MessageThreadInput::LoadThread(thread) => {
                 self.thread = Some(thread);
                 widgets.messages_box.remove_all();
+
                 if let Some(thread) = &self.thread {
-                    for msg in thread.messages.clone() {
-                        widgets.messages_box.append(&build_canvas_bubble(&msg));
+                    let mut last_day: Option<String> = None;
+
+                    for msg in &thread.messages {
+                        let day = day_header(&msg.timestamp);
+
+                        // Insert a day header whenever the day changes
+                        if last_day.as_ref() != Some(&day) {
+                            let header = build_day_header(&day);
+                            widgets.messages_box.append(&header);
+                            last_day = Some(day);
+                        }
+
+                        widgets.messages_box.append(&build_canvas_bubble(msg));
                     }
                 }
+
+                // Scroll to bottom after layout
                 let adj = widgets.scrolled_window.vadjustment();
                 glib::idle_add_local_once(move || {
-                    // Wait one more cycle for the layout allocation to complete
                     glib::idle_add_local_once(move || {
                         let target = adj.upper() - adj.page_size();
                         adj.set_value(target);
@@ -159,10 +167,63 @@ impl Component for MessageThreadWidget {
         }
     }
 }
+
+// ─────────────────────────────────────────────
+// Day header (Today / Yesterday / Thursday / Oct 12, 2025)
+// ─────────────────────────────────────────────
+fn day_header(iso_str: &str) -> String {
+    let Ok(utc_dt) = DateTime::parse_from_rfc3339(iso_str) else {
+        return iso_str.to_string();
+    };
+
+    let local_dt = utc_dt.with_timezone(&Local);
+    let now = Local::now();
+    let dt_date = local_dt.date_naive();
+    let today = now.date_naive();
+
+    if dt_date == today {
+        "Today".to_string()
+    } else if dt_date == today - chrono::Duration::try_days(1).unwrap() {
+        "Yesterday".to_string()
+    } else if today.signed_duration_since(dt_date).num_days() < 7 {
+        local_dt.format("%A").to_string() // Thursday, Friday…
+    } else {
+        local_dt.format("%b %d, %Y").to_string() // Oct 12, 2025
+    }
+}
+
+fn build_day_header(text: &str) -> gtk::Label {
+    let label = gtk::Label::new(Some(text));
+    label.set_halign(gtk::Align::Center);
+    label.set_margin_top(16);
+    label.set_margin_bottom(8);
+    label.set_opacity(0.55);
+    label.add_css_class("caption");
+    // Optional: make it a bit stronger
+    // label.add_css_class("heading");
+    label
+}
+
+// ─────────────────────────────────────────────
+// Time only (9:19 PM)
+// ─────────────────────────────────────────────
+fn time_only(iso_str: &str) -> String {
+    let Ok(utc_dt) = DateTime::parse_from_rfc3339(iso_str) else {
+        return iso_str.to_string();
+    };
+
+    let local_dt = utc_dt.with_timezone(&Local);
+    let time_str = local_dt.format("%I:%M %p").to_string();
+    time_str.strip_prefix('0').unwrap_or(&time_str).to_string()
+}
+
+// ─────────────────────────────────────────────
+// Bubble (now only shows the time)
+// ─────────────────────────────────────────────
 fn build_canvas_bubble(msg: &Message) -> gtk::Box {
     let is_outgoing = msg.outgoing;
     let body = msg.body.clone();
-    let timestamp = format_imessage_timestamp(&msg.timestamp.clone());
+    let timestamp = time_only(&msg.timestamp); // ← only the time now
 
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     row.set_hexpand(true);
@@ -196,13 +257,11 @@ fn build_canvas_bubble(msg: &Message) -> gtk::Box {
     label.set_halign(gtk::Align::Fill);
     label.set_valign(gtk::Align::Center);
 
-    // Padding (includes tail space)
     label.set_margin_start(if is_outgoing { 16 } else { 16 + 9 });
     label.set_margin_end(if is_outgoing { 16 + 9 } else { 16 });
     label.set_margin_top(10);
     label.set_margin_bottom(10);
 
-    // Safe markup for white text on outgoing
     if is_outgoing {
         let escaped = glib::markup_escape_text(body.trim());
         label.set_use_markup(true);
@@ -215,7 +274,6 @@ fn build_canvas_bubble(msg: &Message) -> gtk::Box {
     // ---------- DrawingArea ----------
     let area = gtk::DrawingArea::new();
     area.set_can_target(false);
-    // IMPORTANT: no hexpand / vexpand → prevents forced extra width
 
     let outgoing = is_outgoing;
     let tail = 9.0;
@@ -239,19 +297,24 @@ fn build_canvas_bubble(msg: &Message) -> gtk::Box {
         }
 
         cr.new_path();
-
         if outgoing {
+            // Body is inset on the right by the tail width
             cr.move_to(r, 0.0);
             cr.line_to(w - r - tail_f, 0.0);
             cr.arc(w - r - tail_f, r, r, -std::f64::consts::FRAC_PI_2, 0.0);
             cr.line_to(w - tail_f, h - r);
-            cr.arc(w - r - tail_f, h - r, r, 0.0, std::f64::consts::FRAC_PI_2);
+            //cr.arc(w - r - tail_f, h - r, r, 0.0, std::f64::consts::FRAC_PI_2);
 
-            cr.line_to(w, h - 15.0);
-            cr.line_to(w - tail_f, h - 25.0);
+            // Bottom edge to the base of the tail
             cr.line_to(w - tail_f, h);
 
-            cr.line_to(r, h);
+            // Short right tail (stays inside the widget)
+            cr.line_to(w, h - 15.0); // tip (uses the extra margin)
+            cr.line_to(w - tail_f, h - 25.0);
+            cr.line_to(w - tail_f, h - r);
+
+            // Continue to left side
+            cr.line_to(w - tail_f, h);
             cr.arc(
                 r,
                 h - r,
@@ -287,14 +350,13 @@ fn build_canvas_bubble(msg: &Message) -> gtk::Box {
         let _ = cr.fill();
     });
 
-    // Assemble bubble
     overlay.set_child(Some(&area));
     overlay.add_overlay(&label);
     overlay.set_measure_overlay(&label, true);
 
     container.append(&overlay);
 
-    // ---------- Timestamp (does not stretch the bubble) ----------
+    // ---------- Time only (under the bubble) ----------
     let time = gtk::Label::new(Some(&timestamp));
     time.set_opacity(0.55);
     time.set_halign(if is_outgoing {
@@ -306,16 +368,13 @@ fn build_canvas_bubble(msg: &Message) -> gtk::Box {
     time.set_margin_end(8);
     time.add_css_class("caption");
     time.set_hexpand(false);
-
-    // Prevent long timestamps from forcing extra width on short messages
     time.set_ellipsize(gtk::pango::EllipsizeMode::End);
-    time.set_max_width_chars(18);
+    time.set_max_width_chars(12);
 
     container.append(&time);
 
-    // ---------- Final row ----------
     row.append(&container);
-    row.set_margin_bottom(20);
+    row.set_margin_bottom(12); // a bit tighter now that we have day headers
 
     if !is_outgoing {
         let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -324,39 +383,6 @@ fn build_canvas_bubble(msg: &Message) -> gtk::Box {
     }
 
     row
-}
-
-fn format_imessage_timestamp(iso_str: &str) -> String {
-    // Parse the RFC3339 / ISO timestamp string
-    let Ok(utc_dt) = DateTime::parse_from_rfc3339(iso_str) else {
-        return iso_str.to_string(); // Fallback if parsing fails
-    };
-
-    let local_dt = utc_dt.with_timezone(&Local);
-    let now = Local::now();
-
-    let dt_date = local_dt.date_naive();
-    let today = now.date_naive();
-
-    let time_str = local_dt.format("%I:%M %p").to_string();
-    // Remove leading zero from hour if present for cleaner look (e.g. "9:19 PM" instead of "09:19 PM")
-    let time_str = time_str.strip_prefix('0').unwrap_or(&time_str);
-
-    if dt_date == today {
-        format!("Today at {}", time_str)
-    } else if dt_date == today - chrono::Duration::try_days(1).unwrap() {
-        format!("Yesterday at {}", time_str)
-    } else if today.signed_duration_since(dt_date).num_days() < 7 {
-        // Within the last week, show Day of Week (e.g., "Thursday at 9:19 PM")
-        let day_name = local_dt.format("%A").to_string();
-        format!("{} at {}", day_name, time_str)
-    } else {
-        // Older messages show full date and time
-        local_dt
-            .format("%b %d, %Y at %I:%M %p")
-            .to_string()
-            .replace(" at 0", " at ")
-    }
 }
 
 fn theme_accent(widget: &gtk::DrawingArea) -> gtk::gdk::RGBA {
