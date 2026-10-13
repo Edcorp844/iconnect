@@ -41,9 +41,6 @@ impl Thread {
     }
 
     pub fn preview(&self) -> &str {
-        self.messages
-            .last()
-            .map(|m| m.body.as_str())
-            .unwrap_or("")
+        self.messages.last().map(|m| m.body.as_str()).unwrap_or("")
     }
 }

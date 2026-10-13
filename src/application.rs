@@ -182,9 +182,9 @@ impl AppModel {
                 self.rebuild_sidebar();
 
                 // Auto-select first thread if nothing is selected
-                if self.selected.is_none() && !self.threads.is_empty() {
-                    self.selected = Some(0);
-                }
+                // if self.selected.is_none() && !self.threads.is_empty() {
+                //     self.selected = Some(0);
+                // }
 
                 // ★ Update the currently open conversation with the newest messages
                 if let Some(idx) = self.selected {

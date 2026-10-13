@@ -1,6 +1,6 @@
 use adw::prelude::*;
 use chrono::{DateTime, Local, Utc};
-use gtk::glib;
+use gtk::{glib, prelude::*};
 use relm4::{prelude::*, Component, ComponentParts, ComponentSender, RelmRemoveAllExt};
 
 use crate::workers::message_thread::{Message, Thread};
@@ -62,6 +62,7 @@ impl Component for MessageThreadWidget {
                 gtk::Button {
                     set_icon_name: "list-add-symbolic",
                     set_valign: gtk::Align::Center,
+                    set_sensitive: false,
                 },
 
                 #[name="scrolled_window"]
@@ -91,6 +92,8 @@ impl Component for MessageThreadWidget {
                         sender.input(MessageThreadInput::SendMessage);
                     }
                 },
+
+                #[name = "emoji_button"]
                 gtk::Button {
                     set_icon_name: "face-smile-symbolic",
                     set_valign: gtk::Align::Center,
@@ -106,6 +109,29 @@ impl Component for MessageThreadWidget {
     ) -> ComponentParts<Self> {
         let model = Self { thread: None };
         let widgets = view_output!();
+
+        let text_view = widgets.message_text_box.clone();
+        let emoji_button = widgets.emoji_button.clone();
+
+        emoji_button.connect_clicked(move |btn| {
+            let chooser = gtk::EmojiChooser::new();
+            chooser.set_parent(btn);
+
+            let text_view = text_view.clone();
+            chooser.connect_emoji_picked(move |chooser, emoji| {
+                let buffer = text_view.buffer();
+                let mut iter = buffer.iter_at_mark(&buffer.get_insert());
+                buffer.insert(&mut iter, emoji);
+
+                // Optional: put cursor after the inserted emoji
+                buffer.place_cursor(&iter);
+
+                chooser.popdown();
+            });
+
+            chooser.popup();
+        });
+
         ComponentParts { model, widgets }
     }
 
@@ -306,7 +332,7 @@ fn build_canvas_bubble(msg: &Message) -> gtk::Box {
             //cr.arc(w - r - tail_f, h - r, r, 0.0, std::f64::consts::FRAC_PI_2);
 
             // Bottom edge to the base of the tail
-            cr.line_to(w - tail_f, h);
+            cr.line_to(w - tail_f -r, h);
 
             // Short right tail (stays inside the widget)
             cr.line_to(w, h - 15.0); // tip (uses the extra margin)
@@ -314,7 +340,7 @@ fn build_canvas_bubble(msg: &Message) -> gtk::Box {
             cr.line_to(w - tail_f, h - r);
 
             // Continue to left side
-            cr.line_to(w - tail_f, h);
+            cr.line_to(w - tail_f -r , h);
             cr.arc(
                 r,
                 h - r,
@@ -322,7 +348,7 @@ fn build_canvas_bubble(msg: &Message) -> gtk::Box {
                 std::f64::consts::FRAC_PI_2,
                 std::f64::consts::PI,
             );
-            cr.line_to(0.0, r);
+            cr.line_to(0.0, r );
             cr.arc(r, r, r, std::f64::consts::PI, 1.5 * std::f64::consts::PI);
         } else {
             cr.move_to(r + tail_f, 0.0);
