@@ -1,4 +1,5 @@
 use adw::prelude::*;
+use gettextrs::gettext;
 use gtk::prelude::*;
 use relm4::{prelude::*, ComponentParts, ComponentSender};
 
@@ -71,17 +72,77 @@ impl Component for PreferencesModel {
 
     view! {
         #[root]
-        adw::PreferencesWindow {
-            set_title: Some("Preferences"),
-            set_default_width: 640,
-            set_default_height: 720,
+        adw::PreferencesDialog {
+            set_title: &gettext("Preferences"),
             set_search_enabled: true,
-            set_modal: true,
 
             // ── Notifications ────────────────────────────────
             add = &adw::PreferencesPage {
-                set_title: "Notifications",
+                set_title: &gettext("Connection"),
                 set_icon_name: Some("preferences-system-notifications-symbolic"),
+
+                add = &adw::PreferencesGroup {
+                    set_title: &gettext("Paired Iphone"),
+
+                    adw::ActionRow {
+                        set_title: "Ihone name",
+                        set_subtitle: "Mac address",
+                        add_suffix=&gtk::Button{
+                            set_label: &gettext("Unpair"),
+                            set_css_classes: &vec!["destructive-action", ],
+                            set_valign: gtk::Align::Center,
+                        }
+                    },
+                },
+
+                add = &adw::PreferencesGroup {
+                    set_title: &gettext("Connection Details"),
+
+                    adw::ActionRow {
+                        set_title: &gettext("Background Service"),
+                        set_subtitle: "Status",
+                        add_suffix=&gtk::Button{
+                            set_label: &gettext("Unpair"),
+                            set_css_classes: &vec!["destructive-action", ],
+                            set_valign: gtk::Align::Center,
+                        }
+                    },
+                    adw::ActionRow {
+                        set_title: &gettext("Messages"),
+                        set_subtitle: "Status",
+                        add_suffix=&gtk::Button{
+                            set_label: &gettext("Unpair"),
+                            set_css_classes: &vec!["destructive-action", ],
+                            set_valign: gtk::Align::Center,
+                        }
+                    },
+                    adw::ActionRow {
+                        set_title: &gettext("Contacts"),
+                        set_subtitle: "Status",
+                        add_suffix=&gtk::Button{
+                            set_label: &gettext("Unpair"),
+                            set_css_classes: &vec!["destructive-action", ],
+                            set_valign: gtk::Align::Center,
+                        }
+                    },
+                    adw::ActionRow {
+                        set_title: &gettext("Iphone notications"),
+                        set_subtitle: "Status",
+                        add_suffix=&gtk::Button{
+                            set_label: &gettext("Unpair"),
+                            set_css_classes: &vec!["destructive-action", ],
+                            set_valign: gtk::Align::Center,
+                        }
+                    },
+                },
+
+
+            },
+
+            // ── Media ────────────────────────────────────────
+            add = &adw::PreferencesPage {
+                set_title: &gettext("General"),
+                set_icon_name: Some("audio-headphones-symbolic"),
 
                 add = &adw::PreferencesGroup {
                     set_title: "Desktop Notifications",
@@ -125,13 +186,8 @@ impl Component for PreferencesModel {
                             sender.input(PreferencesInput::AncsActionsChanged(row.is_active()));
                         }
                     },
-                },
-            },
 
-            // ── Media ────────────────────────────────────────
-            add = &adw::PreferencesPage {
-                set_title: "Media",
-                set_icon_name: Some("audio-headphones-symbolic"),
+                },
 
                 add = &adw::PreferencesGroup {
                     set_title: "Media Control",
@@ -157,6 +213,25 @@ impl Component for PreferencesModel {
                         set_sensitive: model.media_control,
                         connect_active_notify[sender] => move |row| {
                             sender.input(PreferencesInput::MprisPlayerChanged(row.is_active()));
+                        }
+                    },
+                },
+
+                add = &adw::PreferencesGroup {
+                    set_title: "Local Data",
+                    set_description: Some("Protects message history and cached contacts."),
+
+                    adw::ComboRow {
+                        set_title: "Storage",
+                        set_model: Some(&gtk::StringList::new(&[
+                            "Encrypted with Desktop Keyring",
+                            "Unencrypted Local Data",
+                            "Do Not Retain Local Data",
+                        ])),
+                        #[watch]
+                        set_selected: model.storage_policy,
+                        connect_selected_notify[sender] => move |row| {
+                            sender.input(PreferencesInput::StoragePolicyChanged(row.selected()));
                         }
                     },
                 },
@@ -234,24 +309,7 @@ impl Component for PreferencesModel {
                     },
                 },
 
-                add = &adw::PreferencesGroup {
-                    set_title: "Local Data",
-                    set_description: Some("Protects message history and cached contacts."),
 
-                    adw::ComboRow {
-                        set_title: "Storage",
-                        set_model: Some(&gtk::StringList::new(&[
-                            "Encrypted with Desktop Keyring",
-                            "Unencrypted Local Data",
-                            "Do Not Retain Local Data",
-                        ])),
-                        #[watch]
-                        set_selected: model.storage_policy,
-                        connect_selected_notify[sender] => move |row| {
-                            sender.input(PreferencesInput::StoragePolicyChanged(row.selected()));
-                        }
-                    },
-                },
             },
         }
     }
@@ -263,24 +321,24 @@ impl Component for PreferencesModel {
     ) -> ComponentParts<Self> {
         let model = PreferencesModel {
             notification_policy: 1, // messages only
-            contacts_only: false,
-            ancs_actions: false,
-            show_ancs_actions: false,
+            contacts_only: true,
+            ancs_actions: true,
+            show_ancs_actions: true,
 
-            media_control: false,
-            mpris_player: false,
-            show_media: false,
+            media_control: true,
+            mpris_player: true,
+            show_media: true,
 
-            call_history: false,
+            call_history: true,
             missed_call_popups: true,
-            show_call_history: false,
+            show_call_history: true,
 
-            proximity_lock: false,
-            show_proximity_lock: false,
+            proximity_lock: true,
+            show_proximity_lock: true,
             proximity_grace: 60,
 
-            calls_enabled: false,
-            show_calls: false,
+            calls_enabled: true,
+            show_calls: true,
 
             storage_policy: 0, // encrypted
         };

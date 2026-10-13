@@ -126,8 +126,7 @@ impl AppMenu {
         if let Some(active_window) = app.active_window() {
             let window = PreferencesModel::builder().launch(()).detach();
             let widget = window.widget();
-            widget.set_transient_for(Some(&active_window));
-            widget.present();
+            widget.present(Some(&active_window));
         }
     }
 }

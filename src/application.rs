@@ -1,5 +1,4 @@
 use adw::prelude::*;
-use gtk::prelude::*;
 use relm4::{prelude::*, Component, ComponentParts, ComponentSender, Controller};
 use serde_json::Value;
 
@@ -58,8 +57,11 @@ impl Component for AppModel {
                     set_child = &adw::ToolbarView {
                         add_top_bar = &adw::HeaderBar {
                             set_show_title: false,
+                            pack_start=&gtk::ToggleButton{
+                                set_icon_name: "system-search-symbolic"
+                            },
                             pack_end = &gtk::Button {
-                                set_icon_name: "view-refresh-symbolic",
+                                set_icon_name: "new-message-symbolic",
                                 connect_clicked[sender] => move |_| {
                                     let _ = &sender;
                                 }
@@ -73,6 +75,7 @@ impl Component for AppModel {
 
                 #[wrap(Some)]
                 set_content = &adw::NavigationPage {
+                    #[watch]
                     set_title: "Conversation",
                     #[wrap(Some)]
                     set_child = &adw::ToolbarView {
@@ -138,8 +141,14 @@ impl Component for AppModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, msg: AppModelInput, sender: ComponentSender<Self>, _root: &Self::Root) {
-        match msg {
+    fn update_with_view(
+        &mut self,
+        widgets: &mut Self::Widgets,
+        message: Self::Input,
+        sender: ComponentSender<Self>,
+        root: &Self::Root,
+    ) {
+        match message {
             AppModelInput::Worker(out) => self.handle_worker_output(out, sender),
 
             AppModelInput::ThreadSelected(idx) => {
@@ -149,6 +158,8 @@ impl Component for AppModel {
                 if let Some(thread) = self.threads.get(idx).cloned() {
                     self.thread_widget
                         .emit(MessageThreadInput::LoadThread(thread.clone()));
+                    let label = gtk::Label::new(Some(&thread.name));
+                    widgets.header.set_title_widget(Some(&label));
                     self.worker.emit(WorkerInput::MarkRead { key: thread.key });
                 }
             }

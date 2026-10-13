@@ -60,7 +60,7 @@ impl Component for MessageThreadWidget {
                 set_spacing: 8,
                 set_margin_all: 10,
 
-                gtk::Button { 
+                gtk::Button {
                     set_icon_name: "list-add-symbolic",
                     set_valign: gtk::Align::Center,
                 },
@@ -85,7 +85,7 @@ impl Component for MessageThreadWidget {
                     }
                 },
                 gtk::Button {
-                    set_icon_name: "audio-input-microphone-symbolic",
+                    set_icon_name: "send-symbolic",
                     set_valign: gtk::Align::Center,
 
                     connect_clicked[sender] => move |_| {
@@ -174,43 +174,68 @@ fn build_canvas_bubble(msg: &Message) -> gtk::Box {
     }
 
     let container = gtk::Box::new(gtk::Orientation::Vertical, 3);
-    let overlay = gtk::Overlay::new();
+    container.set_halign(if is_outgoing {
+        gtk::Align::End
+    } else {
+        gtk::Align::Start
+    });
 
-    // ---------- 1. Native Text Label (Main Child - dictates the exact size) ----------
-    let label = gtk::Label::new(Some(&body));
+    // ---------- Bubble Overlay ----------
+    let overlay = gtk::Overlay::new();
+    overlay.set_hexpand(false);
+    overlay.set_vexpand(false);
+
+    // ---------- Label ----------
+    let label = gtk::Label::new(None);
     label.set_wrap(true);
     label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    label.add_css_class("document");
     label.set_max_width_chars(32);
     label.set_xalign(0.0);
     label.set_yalign(0.5);
+    label.set_halign(gtk::Align::Fill);
+    label.set_valign(gtk::Align::Center);
 
-    // Padding inside the bubble (extra space on the tail side)
+    // Padding (includes tail space)
     label.set_margin_start(if is_outgoing { 16 } else { 16 + 9 });
     label.set_margin_end(if is_outgoing { 16 + 9 } else { 16 });
     label.set_margin_top(10);
     label.set_margin_bottom(10);
 
-    // Label is the main child so the Overlay matches its exact wrapped dimensions
-    overlay.set_child(Some(&label));
+    // Safe markup for white text on outgoing
+    if is_outgoing {
+        let escaped = glib::markup_escape_text(body.trim());
+        label.set_use_markup(true);
+        label.set_label(&format!(r#"<span foreground="white">{}</span>"#, escaped));
+    } else {
+        label.set_use_markup(false);
+        label.set_text(body.trim());
+    }
 
-    // ---------- 2. Background DrawingArea (Overlay Child - stretches to match label) ----------
+    // ---------- DrawingArea ----------
     let area = gtk::DrawingArea::new();
-    area.set_hexpand(true);
-    area.set_vexpand(true);
+    area.set_can_target(false);
+    // IMPORTANT: no hexpand / vexpand → prevents forced extra width
 
     let outgoing = is_outgoing;
     let tail = 9.0;
     let tail_f = tail as f64;
 
-    area.set_draw_func(move |_da, cr, width, height| {
+    area.set_draw_func(move |da, cr, width, height| {
         let w = width as f64;
         let h = height as f64;
         let r = 18.0;
 
         if outgoing {
-            cr.set_source_rgba(0.20, 0.47, 0.96, 0.2); // Accent blue
+            let color = theme_accent(da);
+            cr.set_source_rgba(
+                color.red() as f64,
+                color.green() as f64,
+                color.blue() as f64,
+                1.0,
+            );
         } else {
-            cr.set_source_rgba(0.30, 0.30, 0.32, 0.2); // Dark gray
+            cr.set_source_rgba(0.30, 0.30, 0.32, 0.2);
         }
 
         cr.new_path();
@@ -262,11 +287,14 @@ fn build_canvas_bubble(msg: &Message) -> gtk::Box {
         let _ = cr.fill();
     });
 
-    // Add drawing area as an overlay so it sits behind the label and matches its size
-    overlay.add_overlay(&area);
+    // Assemble bubble
+    overlay.set_child(Some(&area));
+    overlay.add_overlay(&label);
+    overlay.set_measure_overlay(&label, true);
+
     container.append(&overlay);
 
-    // Timestamp below bubble
+    // ---------- Timestamp (does not stretch the bubble) ----------
     let time = gtk::Label::new(Some(&timestamp));
     time.set_opacity(0.55);
     time.set_halign(if is_outgoing {
@@ -277,8 +305,15 @@ fn build_canvas_bubble(msg: &Message) -> gtk::Box {
     time.set_margin_start(8);
     time.set_margin_end(8);
     time.add_css_class("caption");
+    time.set_hexpand(false);
+
+    // Prevent long timestamps from forcing extra width on short messages
+    time.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    time.set_max_width_chars(18);
+
     container.append(&time);
 
+    // ---------- Final row ----------
     row.append(&container);
     row.set_margin_bottom(20);
 
@@ -322,4 +357,11 @@ fn format_imessage_timestamp(iso_str: &str) -> String {
             .to_string()
             .replace(" at 0", " at ")
     }
+}
+
+fn theme_accent(widget: &gtk::DrawingArea) -> gtk::gdk::RGBA {
+    let context = widget.style_context();
+    context
+        .lookup_color("accent_color")
+        .unwrap_or_else(|| context.color())
 }

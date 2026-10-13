@@ -3,46 +3,11 @@ use relm4::prelude::*;
 use relm4::tokio;
 use relm4::Worker;
 use serde_json::Value;
-use zbus::{proxy, Connection};
+use zbus::Connection;
 
+use crate::workers::blueferry_client::EventsProxy;
+use crate::workers::blueferry_client::MessagesProxy;
 use crate::workers::message_thread::Thread;
-
-// ---------- Messages1 (commands + snapshots) ----------
-#[proxy(
-    interface = "io.weirdware.BlueFerry.Messages1",
-    default_service = "io.weirdware.BlueFerry",
-    default_path = "/io/weirdware/BlueFerry"
-)]
-trait Messages {
-    fn get_status(&self) -> zbus::Result<String>;
-    fn list_threads(&self, limit: u32) -> zbus::Result<String>;
-    fn send_to_thread_checked(
-        &self,
-        key: &str,
-        body: &str,
-        confirm_group: bool,
-        expected_group_token: &str,
-    ) -> zbus::Result<String>;
-    fn mark_thread_read(&self, key: &str) -> zbus::Result<u32>;
-
-    // keep this just in case some versions still emit it
-    #[zbus(signal)]
-    fn message_received(&self) -> zbus::Result<()>;
-}
-
-// ---------- Events1 (live content-free notifications) ----------
-#[proxy(
-    interface = "io.weirdware.BlueFerry.Events1",
-    default_service = "io.weirdware.BlueFerry",
-    default_path = "/io/weirdware/BlueFerry"
-)]
-trait Events {
-    #[zbus(signal)]
-    fn history_changed(&self) -> zbus::Result<()>;
-
-    #[zbus(signal)]
-    fn status_changed(&self) -> zbus::Result<()>;
-}
 
 #[derive(Debug)]
 pub enum WorkerInput {
