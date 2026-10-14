@@ -1,18 +1,20 @@
 use adw::prelude::*;
-use chrono::{DateTime, Local, Utc};
-use gtk::{glib, prelude::*};
+use chrono::{DateTime, Local};
+use gtk::glib;
 use relm4::{prelude::*, Component, ComponentParts, ComponentSender, RelmRemoveAllExt};
 
-use crate::workers::message_thread::{Message, Thread};
+use crate::workers::blueferry_worker::blueferry_client::util::message_thread::{
+    Message, MessageThread,
+};
 
 pub struct MessageThreadWidget {
-    thread: Option<Thread>,
+    thread: Option<MessageThread>,
 }
 
 #[derive(Debug, Clone)]
 pub enum MessageThreadInput {
     SendMessage,
-    LoadThread(Thread),
+    LoadThread(MessageThread),
 }
 
 #[derive(Debug, Clone)]
@@ -332,7 +334,7 @@ fn build_canvas_bubble(msg: &Message) -> gtk::Box {
             //cr.arc(w - r - tail_f, h - r, r, 0.0, std::f64::consts::FRAC_PI_2);
 
             // Bottom edge to the base of the tail
-            cr.line_to(w - tail_f -r, h);
+            cr.line_to(w - tail_f - r, h);
 
             // Short right tail (stays inside the widget)
             cr.line_to(w, h - 15.0); // tip (uses the extra margin)
@@ -340,7 +342,7 @@ fn build_canvas_bubble(msg: &Message) -> gtk::Box {
             cr.line_to(w - tail_f, h - r);
 
             // Continue to left side
-            cr.line_to(w - tail_f -r , h);
+            cr.line_to(w - tail_f - r, h);
             cr.arc(
                 r,
                 h - r,
@@ -348,7 +350,7 @@ fn build_canvas_bubble(msg: &Message) -> gtk::Box {
                 std::f64::consts::FRAC_PI_2,
                 std::f64::consts::PI,
             );
-            cr.line_to(0.0, r );
+            cr.line_to(0.0, r);
             cr.arc(r, r, r, std::f64::consts::PI, 1.5 * std::f64::consts::PI);
         } else {
             cr.move_to(r + tail_f, 0.0);

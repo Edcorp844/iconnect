@@ -35,4 +35,7 @@ pub trait Events {
 
     #[zbus(signal)]
     fn status_changed(&self) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn open_message_requested(&self) -> zbus::Result<()>;
 }

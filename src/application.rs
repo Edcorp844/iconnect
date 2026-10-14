@@ -8,24 +8,24 @@ use crate::{
         message_thread::{MessageThreadInput, MessageThreadOutput, MessageThreadWidget},
     },
     config,
-    workers::{
-        blueferry_worker::{BlueFerryWorker, WorkerInput, WorkerOutput},
-        message_thread::Thread,
+    workers::blueferry_worker::{
+        blueferry_client::util::message_thread::MessageThread,
+        worker::{BlueFerryWorker, BlueFerryWorkerInput, BlueFerryWorkerOutput},
     },
 };
 
 pub struct AppModel {
     worker: Controller<BlueFerryWorker>,
-    threads: Vec<Thread>,
+    threads: Vec<MessageThread>,
     status: Option<Value>,
     selected: Option<usize>,
     thread_widget: Controller<MessageThreadWidget>,
-    sidebar_section: adw::SidebarSection,
+    main_menu: Controller<MainMenuButton>,
 }
 
 #[derive(Debug)]
 pub enum AppModelInput {
-    Worker(WorkerOutput),
+    Worker(BlueFerryWorkerOutput),
     ThreadSelected(u32),
     SendMessage { key: String, body: String },
 }
@@ -69,7 +69,9 @@ impl Component for AppModel {
                         },
                         #[wrap(Some)]
                         #[name = "sidebar"]
-                        set_content = &adw::Sidebar {}
+                        set_content = &adw::Sidebar {
+
+                        }
                     }
                 },
 
@@ -80,7 +82,9 @@ impl Component for AppModel {
                     #[wrap(Some)]
                     set_child = &adw::ToolbarView {
                         #[name="header"]
-                        add_top_bar = &adw::HeaderBar {},
+                        add_top_bar = &adw::HeaderBar {
+                            pack_end=model.main_menu.widget(){}
+                        },
 
                         #[wrap(Some)]
                         #[name = "chat_container"]
@@ -88,6 +92,8 @@ impl Component for AppModel {
                             set_orientation: gtk::Orientation::Vertical,
                             set_hexpand: true,
                             set_vexpand: true,
+
+                            model.thread_widget.widget(){}
                         }
                     }
                 }
@@ -100,7 +106,9 @@ impl Component for AppModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let widgets = view_output!();
+        let worker = BlueFerryWorker::builder()
+            .launch(())
+            .forward(sender.input_sender(), AppModelInput::Worker);
 
         let thread_widget =
             MessageThreadWidget::builder()
@@ -111,23 +119,7 @@ impl Component for AppModel {
                     }
                 });
 
-        // Put initial widget in the container
-        widgets.chat_container.append(thread_widget.widget());
-
-        let worker = BlueFerryWorker::builder()
-            .launch(())
-            .forward(sender.input_sender(), AppModelInput::Worker);
-
-        let sidebar_section = adw::SidebarSection::new();
-        widgets.sidebar.append(sidebar_section.clone());
-
-        let sender_clone = sender.clone();
-        widgets.sidebar.connect_activated(move |_sidebar, index| {
-            sender_clone.input(AppModelInput::ThreadSelected(index));
-        });
         let main_menu = MainMenuButton::builder().launch(()).detach();
-
-        widgets.header.pack_end(main_menu.widget());
 
         let model = AppModel {
             worker,
@@ -135,8 +127,15 @@ impl Component for AppModel {
             status: None,
             selected: None,
             thread_widget,
-            sidebar_section,
+            main_menu,
         };
+
+        let widgets = view_output!();
+
+        let sender_clone = sender.clone();
+        widgets.sidebar.connect_activated(move |_sidebar, index| {
+            sender_clone.input(AppModelInput::ThreadSelected(index));
+        });
 
         ComponentParts { model, widgets }
     }
@@ -146,10 +145,15 @@ impl Component for AppModel {
         widgets: &mut Self::Widgets,
         message: Self::Input,
         sender: ComponentSender<Self>,
-        root: &Self::Root,
+        _root: &Self::Root,
     ) {
         match message {
-            AppModelInput::Worker(out) => self.handle_worker_output(out, sender),
+            AppModelInput::Worker(out) => {
+                self.handle_worker_output(out, sender, widgets);
+                if let Some(selected) = self.selected {
+                    widgets.sidebar.set_selected(selected as u32);
+                }
+            }
 
             AppModelInput::ThreadSelected(idx) => {
                 let idx = idx as usize;
@@ -160,31 +164,32 @@ impl Component for AppModel {
                         .emit(MessageThreadInput::LoadThread(thread.clone()));
                     let label = gtk::Label::new(Some(&thread.name));
                     widgets.header.set_title_widget(Some(&label));
-                    self.worker.emit(WorkerInput::MarkRead { key: thread.key });
+                    self.worker
+                        .emit(BlueFerryWorkerInput::MarkRead { key: thread.key });
                 }
             }
             AppModelInput::SendMessage { key, body } => {
-                self.worker.emit(WorkerInput::Send { key, body });
+                self.worker.emit(BlueFerryWorkerInput::Send { key, body });
             }
         }
     }
 }
 
 impl AppModel {
-    fn handle_worker_output(&mut self, out: WorkerOutput, _sender: ComponentSender<Self>) {
+    fn handle_worker_output(
+        &mut self,
+        out: BlueFerryWorkerOutput,
+        _sender: ComponentSender<Self>,
+        widgets: &mut AppModelWidgets,
+    ) {
         match out {
-            WorkerOutput::Status(v) => {
+            BlueFerryWorkerOutput::Status(v) => {
                 self.status = Some(v);
             }
 
-            WorkerOutput::Threads(threads) => {
+            BlueFerryWorkerOutput::MessageThreads(threads) => {
                 self.threads = threads;
-                self.rebuild_sidebar();
-
-                // Auto-select first thread if nothing is selected
-                // if self.selected.is_none() && !self.threads.is_empty() {
-                //     self.selected = Some(0);
-                // }
+                self.rebuild_sidebar(widgets);
 
                 // ★ Update the currently open conversation with the newest messages
                 if let Some(idx) = self.selected {
@@ -195,25 +200,54 @@ impl AppModel {
                 }
             }
 
-            WorkerOutput::Sent { key, handle } => {
+            BlueFerryWorkerOutput::Sent { key, handle } => {
                 eprintln!("sent {key} → {handle}");
             }
 
-            WorkerOutput::Error(msg) => {
+            BlueFerryWorkerOutput::Error(msg) => {
                 eprintln!("worker error: {msg}");
             }
         }
     }
 
-    fn rebuild_sidebar(&self) {
-        self.sidebar_section.remove_all();
+    fn rebuild_sidebar(&mut self, widgets: &mut AppModelWidgets) {
+        let sidebar_section = adw::SidebarSection::new();
 
         for thread in &self.threads {
-            let item = adw::SidebarItem::builder()
+            let mut builder = adw::SidebarItem::builder()
                 .title(thread.display_name())
-                .subtitle(thread.preview())
-                .build();
-            self.sidebar_section.append(item);
+                .subtitle(thread.preview());
+
+            let count = thread.unread_count();
+            if count > 0 {
+                let text = if count < 10 {
+                    format!("0{count}")
+                } else {
+                    format!("{count}")
+                };
+
+                let badge = gtk::Label::new(Some(&text));
+                badge.set_valign(gtk::Align::Center);
+                badge.set_margin_start(6);
+
+                // Inline CSS – no external file needed
+                badge.inline_css(
+                    "min-width: 1.4em; \
+                 padding: 1px 6px; \
+                 border-radius: 9999px; \
+                 background-color: @accent_bg_color; \
+                 color: @accent_fg_color; \
+                 font-weight: bold; \
+                 font-size: 0.8em;",
+                );
+
+                builder = builder.suffix(&badge);
+            }
+
+            let item = builder.build();
+            sidebar_section.append(item);
         }
+        widgets.sidebar.remove_all();
+        widgets.sidebar.append(sidebar_section);
     }
 }
