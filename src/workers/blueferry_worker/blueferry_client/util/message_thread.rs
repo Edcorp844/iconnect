@@ -2,11 +2,14 @@ use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Message {
+    pub address: String,
+    pub handle: String,
     pub body: String,
     pub timestamp: String,
     pub outgoing: bool,
     #[serde(default)]
     pub read: bool,
+    pub sender: String,
     #[serde(default)]
     pub body_truncated: bool,
 }
@@ -49,5 +52,9 @@ impl MessageThread {
             .iter()
             .filter(|m| !m.read && !m.outgoing)
             .count() as u32
+    }
+
+    pub fn reply_to_address(&self) -> &str {
+        self.messages.last().map(|m| m.address.as_str()).unwrap_or("")
     }
 }

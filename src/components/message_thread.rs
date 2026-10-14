@@ -1,5 +1,6 @@
 use adw::prelude::*;
 use chrono::{DateTime, Local};
+use gettextrs::gettext;
 use gtk::glib;
 use relm4::{prelude::*, Component, ComponentParts, ComponentSender, RelmRemoveAllExt};
 
@@ -56,10 +57,12 @@ impl Component for MessageThreadWidget {
             },
 
             // Compose bar
+            #[name="compose_bar"]
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 8,
                 set_margin_all: 10,
+                set_visible: false,
 
                 gtk::Button {
                     set_icon_name: "list-add-symbolic",
@@ -89,6 +92,7 @@ impl Component for MessageThreadWidget {
                 gtk::Button {
                     set_icon_name: "send-symbolic",
                     set_valign: gtk::Align::Center,
+                    set_tooltip_text: Some(&format!("{}", gettext("Send Message"))),
 
                     connect_clicked[sender] => move |_| {
                         sender.input(MessageThreadInput::SendMessage);
@@ -99,6 +103,7 @@ impl Component for MessageThreadWidget {
                 gtk::Button {
                     set_icon_name: "face-smile-symbolic",
                     set_valign: gtk::Align::Center,
+                    set_tooltip_text: Some(&format!("{}", gettext("Emoji"))),
                 },
             }
         }
@@ -166,20 +171,26 @@ impl Component for MessageThreadWidget {
                 self.thread = Some(thread);
                 widgets.messages_box.remove_all();
 
-                if let Some(thread) = &self.thread {
-                    let mut last_day: Option<String> = None;
+                match &self.thread {
+                    Some(thread) => {
+                        widgets.compose_bar.set_visible(true);
+                        let mut last_day: Option<String> = None;
 
-                    for msg in &thread.messages {
-                        let day = day_header(&msg.timestamp);
+                        for msg in &thread.messages {
+                            let day = day_header(&msg.timestamp);
 
-                        // Insert a day header whenever the day changes
-                        if last_day.as_ref() != Some(&day) {
-                            let header = build_day_header(&day);
-                            widgets.messages_box.append(&header);
-                            last_day = Some(day);
+                            // Insert a day header whenever the day changes
+                            if last_day.as_ref() != Some(&day) {
+                                let header = build_day_header(&day);
+                                widgets.messages_box.append(&header);
+                                last_day = Some(day);
+                            }
+
+                            widgets.messages_box.append(&build_canvas_bubble(msg));
                         }
-
-                        widgets.messages_box.append(&build_canvas_bubble(msg));
+                    }
+                    None => {
+                        widgets.compose_bar.set_visible(false);
                     }
                 }
 
@@ -195,6 +206,7 @@ impl Component for MessageThreadWidget {
         }
     }
 }
+
 
 // ─────────────────────────────────────────────
 // Day header (Today / Yesterday / Thursday / Oct 12, 2025)
@@ -419,3 +431,4 @@ fn theme_accent(widget: &gtk::DrawingArea) -> gtk::gdk::RGBA {
         .lookup_color("accent_color")
         .unwrap_or_else(|| context.color())
 }
+
