@@ -1,9 +1,9 @@
 use adw::prelude::*;
 use gettextrs::gettext;
 use gtk::{gio::prelude::*, prelude::*, Application};
-use relm4::{Component, ComponentController};
+use relm4::Component;
 
-use crate::{components::preferences::PreferencesModel, config};
+use crate::config;
 
 pub struct AppMenu {
     app: Application,
@@ -14,6 +14,7 @@ impl AppMenu {
         let app = relm4::main_application();
         Self { app }
     }
+
     pub fn register(&self) {
         let refresh_action = gtk::gio::SimpleAction::new("refresh", None);
         refresh_action.connect_activate(move |_, _| {
@@ -23,15 +24,10 @@ impl AppMenu {
         self.app
             .set_accels_for_action("app.refresh", &["<Primary>r"]);
 
-        let preferences_action = gtk::gio::SimpleAction::new("preferences", None);
-        let app_clone = self.app.clone();
-        preferences_action.connect_activate(move |_, _| {
-            Self::show_preferences_window(app_clone.clone());
-        });
-
-        self.app.add_action(&preferences_action);
-        self.app
-            .set_accels_for_action("app.preferences", &["<Primary>comma"]);
+        // NOTE: "preferences" is registered by AppModel::init, because the
+        // preferences component is owned by the app model's lifetime.
+        // Registering it here would bind the action to a function that
+        // cannot keep the component's runtime alive.
 
         let shortcuts_action = gtk::gio::SimpleAction::new("shortcuts", None);
         let app_clone = self.app.clone();
@@ -87,21 +83,16 @@ impl AppMenu {
                 .height_request(500)
                 .build();
 
-            // --- SECTION: Window ---
             let window_section = adw::ShortcutsSection::new(Some(&gettext("Window")));
-
             let refresh = adw::ShortcutsItem::new(&gettext("Refresh"), "<Primary>r");
             refresh.set_subtitle(&gettext("Refresh all Application Content"));
-
             window_section.add(refresh);
 
             let quit = adw::ShortcutsItem::new(&gettext("Quit"), "<Primary>q");
             quit.set_subtitle(&gettext("Close the application"));
             window_section.add(quit);
 
-            // --- SECTION: Application ---
             let application_section = adw::ShortcutsSection::new(Some(&gettext("Application")));
-
             let prefs = adw::ShortcutsItem::new(&gettext("Preferences"), "<Primary>comma");
             prefs.set_subtitle(&gettext("Configure application preferences"));
             application_section.add(prefs);
@@ -110,23 +101,13 @@ impl AppMenu {
             shorts.set_subtitle(&gettext("Shows shortcuts window"));
             application_section.add(shorts);
 
-            // --- SECTION: Navigation ---
             let nav_section = adw::ShortcutsSection::new(Some(&gettext("Navigation")));
 
-            // Add sections to the dialog
             shortcuts_window.add(window_section);
             shortcuts_window.add(application_section);
             shortcuts_window.add(nav_section);
 
             shortcuts_window.present(Some(&active_window));
-        }
-    }
-
-    fn show_preferences_window(app: gtk::Application) {
-        if let Some(active_window) = app.active_window() {
-            let window = PreferencesModel::builder().launch(()).detach();
-            let widget = window.widget();
-            widget.present(Some(&active_window));
         }
     }
 }

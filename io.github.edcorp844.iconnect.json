@@ -13,7 +13,10 @@
         "--socket=fallback-x11",
         "--device=dri",
         "--socket=wayland",
+        "--system-talk-name=org.bluez",
+        "--talk-name=org.freedesktop.Flatpak",
         "--talk-name=io.weirdware.BlueFerry"
+
     ],
     "environment": {
         "ICON_THEME": "Adwaita"

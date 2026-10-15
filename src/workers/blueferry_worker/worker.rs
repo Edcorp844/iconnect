@@ -5,7 +5,9 @@ use relm4::Worker;
 use serde_json::Value;
 use zbus::Connection;
 
-use crate::workers::blueferry_worker::blueferry_client::client::{EventsProxy, MessagesProxy};
+use crate::workers::blueferry_worker::blueferry_client::client::{
+    EventsProxy, MessagesProxy,
+};
 use crate::workers::blueferry_worker::blueferry_client::util::message_thread::MessageThread;
 
 #[derive(Debug)]
@@ -15,89 +17,46 @@ pub enum BlueFerryWorkerInput {
     RefreshStatus,
     RefreshThreads,
     RefreshContacts,
-    RefreshEvents {
-        kinds: Vec<String>,
-        limit: u32,
-    },
-    RefreshRecent {
-        folder: String,
-        limit: u32,
-    },
+    RefreshEvents { kinds: Vec<String>, limit: u32 },
+    RefreshRecent { folder: String, limit: u32 },
 
     // ---- messages ----
-    Send {
-        key: String,
-        body: String,
-    },
-    SendToThread {
-        key: String,
-        body: String,
-        confirm_group: bool,
-    },
+    Send { key: String, body: String },
+    SendToThread { key: String, body: String, confirm_group: bool },
     SendToThreadChecked {
         key: String,
         body: String,
         confirm_group: bool,
         expected_group_token: String,
     },
-    SendDirect {
-        recipient: String,
-        body: String,
-    },
+    SendDirect { recipient: String, body: String },
 
     // ---- thread ops ----
-    MarkRead {
-        key: String,
-    },
-    SetStarred {
-        key: String,
-        starred: bool,
-    },
-    SetGroupParticipants {
-        key: String,
-        recipients: Vec<String>,
-    },
-    DeleteThreads {
-        keys: Vec<String>,
-        flag: bool,
-    },
-    ClearHistory {
-        flag: bool,
-    },
+    MarkRead { key: String },
+    SetStarred { key: String, starred: bool },
+    SetGroupParticipants { key: String, recipients: Vec<String> },
+    DeleteThreads { keys: Vec<String>, flag: bool },
+    ClearHistory { flag: bool },
 
     // ---- contacts ----
-    FindContacts {
-        query: String,
-    },
-    ListContacts {
-        offset: u32,
-        limit: u32,
-    },
+    FindContacts { query: String },
+    ListContacts { offset: u32, limit: u32 },
     SyncContacts,
 
     // ---- policies ----
     GetNotificationPolicy,
-    SetNotificationPolicy {
-        policy: String,
-    },
+    SetNotificationPolicy { policy: String },
     GetContactsOnlyNotifications,
-    SetContactsOnlyNotifications {
-        enabled: bool,
-    },
+    SetContactsOnlyNotifications { enabled: bool },
     GetStoragePolicy,
-    SetStoragePolicy {
-        policy: String,
-    },
+    SetStoragePolicy { policy: String },
     UnlockStorage,
 
     // ---- health ----
     IsHealthy,
 
     // ---- legacy ----
-    OpenLegacyGtkMessage {
-        a: String,
-        b: String,
-    },
+    OpenLegacyGtkMessage { a: String, b: String },
 }
 
 #[derive(Debug)]
@@ -109,18 +68,9 @@ pub enum BlueFerryWorkerOutput {
     Events(Value),
     Recent(Value),
 
-    Sent {
-        key: String,
-        handle: String,
-    },
-    MarkedRead {
-        key: String,
-        unread: u32,
-    },
-    StarredChanged {
-        key: String,
-        starred: bool,
-    },
+    Sent { key: String, handle: String },
+    MarkedRead { key: String, unread: u32 },
+    StarredChanged { key: String, starred: bool },
     GroupParticipantsChanged(Value),
     ThreadsDeleted(u32),
     HistoryCleared,
@@ -133,10 +83,7 @@ pub enum BlueFerryWorkerOutput {
     Healthy(bool),
     LegacyOpened(bool),
 
-    Error {
-        method: &'static str,
-        message: String,
-    },
+    Error { method: &'static str, message: String },
 }
 
 pub struct BlueFerryWorker {
@@ -202,17 +149,13 @@ impl Worker for BlueFerryWorker {
                 BlueFerryWorkerInput::RefreshEvents { kinds, limit } => {
                     let kind_refs: Vec<&str> = kinds.iter().map(|s| s.as_str()).collect();
                     match proxy.list_events(&kind_refs, limit).await {
-                        Ok(raw) => {
-                            emit_json(&sender, "list_events", &raw, BlueFerryWorkerOutput::Events)
-                        }
+                        Ok(raw) => emit_json(&sender, "list_events", &raw, BlueFerryWorkerOutput::Events),
                         Err(e) => err(&sender, "list_events", e),
                     }
                 }
                 BlueFerryWorkerInput::RefreshRecent { folder, limit } => {
                     match proxy.list_recent(&folder, limit).await {
-                        Ok(raw) => {
-                            emit_json(&sender, "list_recent", &raw, BlueFerryWorkerOutput::Recent)
-                        }
+                        Ok(raw) => emit_json(&sender, "list_recent", &raw, BlueFerryWorkerOutput::Recent),
                         Err(e) => err(&sender, "list_recent", e),
                     }
                 }
@@ -233,17 +176,15 @@ impl Worker for BlueFerryWorker {
                         Err(e) => err(&sender, "send", e),
                     }
                 }
-                BlueFerryWorkerInput::SendToThread {
-                    key,
-                    body,
-                    confirm_group,
-                } => match proxy.send_to_thread(&key, &body, confirm_group).await {
-                    Ok(handle) => {
-                        let _ = sender.output(BlueFerryWorkerOutput::Sent { key, handle });
-                        fetch_threads(&proxy, &sender).await;
+                BlueFerryWorkerInput::SendToThread { key, body, confirm_group } => {
+                    match proxy.send_to_thread(&key, &body, confirm_group).await {
+                        Ok(handle) => {
+                            let _ = sender.output(BlueFerryWorkerOutput::Sent { key, handle });
+                            fetch_threads(&proxy, &sender).await;
+                        }
+                        Err(e) => err(&sender, "send_to_thread", e),
                     }
-                    Err(e) => err(&sender, "send_to_thread", e),
-                },
+                }
                 BlueFerryWorkerInput::SendToThreadChecked {
                     key,
                     body,
@@ -278,8 +219,7 @@ impl Worker for BlueFerryWorker {
                 BlueFerryWorkerInput::MarkRead { key } => {
                     match proxy.mark_thread_read(&key).await {
                         Ok(unread) => {
-                            let _ =
-                                sender.output(BlueFerryWorkerOutput::MarkedRead { key, unread });
+                            let _ = sender.output(BlueFerryWorkerOutput::MarkedRead { key, unread });
                         }
                         Err(e) => err(&sender, "mark_thread_read", e),
                     }
@@ -287,8 +227,10 @@ impl Worker for BlueFerryWorker {
                 BlueFerryWorkerInput::SetStarred { key, starred } => {
                     match proxy.set_thread_starred(&key, starred).await {
                         Ok(v) => {
-                            let _ = sender
-                                .output(BlueFerryWorkerOutput::StarredChanged { key, starred: v });
+                            let _ = sender.output(BlueFerryWorkerOutput::StarredChanged {
+                                key,
+                                starred: v,
+                            });
                         }
                         Err(e) => err(&sender, "set_thread_starred", e),
                     }
@@ -343,7 +285,6 @@ impl Worker for BlueFerryWorker {
                 BlueFerryWorkerInput::SyncContacts => {
                     match proxy.sync_contacts().await {
                         Ok(n) => {
-                            // No dedicated output; reuse Contacts fetch to refresh.
                             eprintln!("[BlueFerry] synced {n} contacts");
                             let _ = fetch_contacts(&proxy, &sender, 0, 500).await;
                         }
@@ -371,8 +312,7 @@ impl Worker for BlueFerryWorker {
                 BlueFerryWorkerInput::GetContactsOnlyNotifications => {
                     match proxy.get_contacts_only_notifications().await {
                         Ok(v) => {
-                            let _ =
-                                sender.output(BlueFerryWorkerOutput::ContactsOnlyNotifications(v));
+                            let _ = sender.output(BlueFerryWorkerOutput::ContactsOnlyNotifications(v));
                         }
                         Err(e) => err(&sender, "get_contacts_only_notifications", e),
                     }
@@ -380,20 +320,21 @@ impl Worker for BlueFerryWorker {
                 BlueFerryWorkerInput::SetContactsOnlyNotifications { enabled } => {
                     match proxy.set_contacts_only_notifications(enabled).await {
                         Ok(v) => {
-                            let _ =
-                                sender.output(BlueFerryWorkerOutput::ContactsOnlyNotifications(v));
+                            let _ = sender.output(BlueFerryWorkerOutput::ContactsOnlyNotifications(v));
                         }
                         Err(e) => err(&sender, "set_contacts_only_notifications", e),
                     }
                 }
-                BlueFerryWorkerInput::GetStoragePolicy => match proxy.get_storage_policy().await {
-                    Ok(p) => {
-                        let _ = sender.output(BlueFerryWorkerOutput::StoragePolicy(
-                            serde_json::Value::String(p),
-                        ));
+                BlueFerryWorkerInput::GetStoragePolicy => {
+                    match proxy.get_storage_policy().await {
+                        Ok(p) => {
+                            let _ = sender.output(BlueFerryWorkerOutput::StoragePolicy(
+                                serde_json::Value::String(p),
+                            ));
+                        }
+                        Err(e) => err(&sender, "get_storage_policy", e),
                     }
-                    Err(e) => err(&sender, "get_storage_policy", e),
-                },
+                }
                 BlueFerryWorkerInput::SetStoragePolicy { policy } => {
                     match proxy.set_storage_policy(&policy).await {
                         Ok(raw) => emit_json(
@@ -405,23 +346,27 @@ impl Worker for BlueFerryWorker {
                         Err(e) => err(&sender, "set_storage_policy", e),
                     }
                 }
-                BlueFerryWorkerInput::UnlockStorage => match proxy.unlock_storage().await {
-                    Ok(raw) => emit_json(
-                        &sender,
-                        "unlock_storage",
-                        &raw,
-                        BlueFerryWorkerOutput::Unlocked,
-                    ),
-                    Err(e) => err(&sender, "unlock_storage", e),
-                },
+                BlueFerryWorkerInput::UnlockStorage => {
+                    match proxy.unlock_storage().await {
+                        Ok(raw) => emit_json(
+                            &sender,
+                            "unlock_storage",
+                            &raw,
+                            BlueFerryWorkerOutput::Unlocked,
+                        ),
+                        Err(e) => err(&sender, "unlock_storage", e),
+                    }
+                }
 
                 // ---------------- health / legacy ----------------
-                BlueFerryWorkerInput::IsHealthy => match proxy.is_healthy().await {
-                    Ok(v) => {
-                        let _ = sender.output(BlueFerryWorkerOutput::Healthy(v));
+                BlueFerryWorkerInput::IsHealthy => {
+                    match proxy.is_healthy().await {
+                        Ok(v) => {
+                            let _ = sender.output(BlueFerryWorkerOutput::Healthy(v));
+                        }
+                        Err(e) => err(&sender, "is_healthy", e),
                     }
-                    Err(e) => err(&sender, "is_healthy", e),
-                },
+                }
                 BlueFerryWorkerInput::OpenLegacyGtkMessage { a, b } => {
                     match proxy.open_legacy_gtk_message(&a, &b).await {
                         Ok(v) => {
@@ -434,6 +379,8 @@ impl Worker for BlueFerryWorker {
         });
     }
 }
+
+// ---- helpers ----
 
 fn err_str(
     sender: &ComponentSender<BlueFerryWorker>,
@@ -450,20 +397,12 @@ fn err(sender: &ComponentSender<BlueFerryWorker>, method: &'static str, e: zbus:
     err_str(sender, method, e.to_string());
 }
 
-fn emit<T>(sender: &ComponentSender<BlueFerryWorker>, value: Result<T, zbus::Error>)
-where
-    T: Into<BlueFerryWorkerOutput>,
-{
-    match value {
-        Ok(v) => {
-            let _ = sender.output(v.into());
-        }
-        Err(e) => err(sender, "unknown", e),
-    }
-}
-
-fn emit_json<F>(sender: &ComponentSender<BlueFerryWorker>, method: &'static str, raw: &str, wrap: F)
-where
+fn emit_json<F>(
+    sender: &ComponentSender<BlueFerryWorker>,
+    method: &'static str,
+    raw: &str,
+    wrap: F,
+) where
     F: FnOnce(Value) -> BlueFerryWorkerOutput,
 {
     match serde_json::from_str::<Value>(raw) {
@@ -520,12 +459,7 @@ async fn fetch_contacts(
     limit: u32,
 ) {
     match proxy.list_contacts(offset, limit).await {
-        Ok(raw) => emit_json(
-            sender,
-            "list_contacts",
-            &raw,
-            BlueFerryWorkerOutput::Contacts,
-        ),
+        Ok(raw) => emit_json(sender, "list_contacts", &raw, BlueFerryWorkerOutput::Contacts),
         Err(e) => err(sender, "list_contacts", e),
     }
 }

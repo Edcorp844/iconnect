@@ -1,5 +1,6 @@
 use adw::prelude::*;
 use gettextrs::gettext;
+use gtk::{gio, glib};
 use relm4::{prelude::*, Component, ComponentParts, ComponentSender, Controller};
 use serde_json::Value;
 
@@ -7,6 +8,7 @@ use crate::{
     components::{
         main_menu_button::MainMenuButton,
         message_thread::{MessageThreadInput, MessageThreadOutput, MessageThreadWidget},
+        preferences::PreferencesModel,
     },
     config,
     workers::blueferry_worker::{
@@ -29,16 +31,20 @@ pub struct AppModel {
     selected: Option<usize>,
     thread_widget: Controller<MessageThreadWidget>,
     main_menu: Controller<MainMenuButton>,
+    preferences: Option<Controller<PreferencesModel>>,
 }
 
 #[derive(Debug)]
 pub enum AppModelInput {
+    OpenPreferences,
+    PreferencesClosed,
     Worker(BlueFerryWorkerOutput),
     NewMessage,
     ThreadSelected(u32),
     SendMessage { key: String, body: String },
     SendDirect { recipient: String, body: String },
     FindContacts { query: String },
+    ShowError { error: String },
 }
 
 #[derive(Debug)]
@@ -57,51 +63,65 @@ impl Component for AppModel {
             set_title: Some(config::APPLICATION_NAME),
 
             #[wrap(Some)]
-            set_content = &adw::NavigationSplitView {
-                set_min_sidebar_width: 260.0,
-                set_max_sidebar_width: 340.0,
+             #[name = "toast_overlay"]
+            set_content = &adw::ToastOverlay {
 
                 #[wrap(Some)]
-                set_sidebar = &adw::NavigationPage {
-                    set_title: "Messages",
+                set_child = &adw::NavigationSplitView {
+                    set_min_sidebar_width: 260.0,
+                    set_max_sidebar_width: 340.0,
+
+                    // -------------------- Sidebar --------------------
                     #[wrap(Some)]
-                    set_child = &adw::ToolbarView {
-                        add_top_bar = &adw::HeaderBar {
-                            set_show_title: false,
-                            pack_start = &gtk::ToggleButton {
-                                set_icon_name: "system-search-symbolic",
-                                set_tooltip_text: Some(&gettext("Search")),
-                            },
-                            pack_end = &gtk::Button {
-                                set_icon_name: "new-message-symbolic",
-                                set_tooltip_text: Some(&gettext("New Message")),
-                                connect_clicked[sender] => move |_| {
-                                    sender.input(AppModelInput::NewMessage);
+                    set_sidebar = &adw::NavigationPage {
+                        set_title: "Messages",
+                        #[wrap(Some)]
+                        set_child = &adw::ToolbarView {
+                            add_top_bar = &adw::HeaderBar {
+                                set_show_title: false,
+                                pack_start = &gtk::ToggleButton {
+                                    set_icon_name: "system-search-symbolic",
+                                    set_tooltip_text: Some(&gettext("Search")),
+                                },
+                                pack_end = &gtk::Button {
+                                    set_icon_name: "new-message-symbolic",
+                                    set_tooltip_text: Some(&gettext("New Message")),
+                                    connect_clicked[sender] => move |_| {
+                                        sender.input(AppModelInput::NewMessage);
+                                    }
                                 }
-                            }
-                        },
-                        #[wrap(Some)]
-                        #[name = "sidebar"]
-                        set_content = &adw::Sidebar {}
-                    }
-                },
+                            },
+                            #[wrap(Some)]
+                            #[name = "sidebar"]
+                            set_content = &adw::Sidebar {}
+                        }
+                    },
 
-                #[wrap(Some)]
-                set_content = &adw::NavigationPage {
-                    set_title: "Conversation",
+                    // -------------------- Conversation --------------------
                     #[wrap(Some)]
-                    set_child = &adw::ToolbarView {
-                        #[name = "header"]
-                        add_top_bar = &adw::HeaderBar {
-                            set_show_title: false,
-                            pack_end = model.main_menu.widget() {}
-                        },
+                    set_content = &adw::NavigationPage {
+                        set_title: "Conversation",
                         #[wrap(Some)]
-                        set_content = &gtk::Box {
-                            set_orientation: gtk::Orientation::Vertical,
-                            set_hexpand: true,
-                            set_vexpand: true,
-                            model.thread_widget.widget() {}
+                        set_child = &adw::ToolbarView {
+                            #[name = "header"]
+                            add_top_bar = &adw::HeaderBar {
+                                set_show_title: false,
+                                pack_end = model.main_menu.widget() {}
+                            },
+
+                            // Error banner (hidden by default)
+                            #[name = "error_banner"]
+                            add_top_bar = &adw::Banner {
+                                set_revealed: false,
+                            },
+
+                            #[wrap(Some)]
+                            set_content = &gtk::Box {
+                                set_orientation: gtk::Orientation::Vertical,
+                                set_hexpand: true,
+                                set_vexpand: true,
+                                model.thread_widget.widget() {}
+                            }
                         }
                     }
                 }
@@ -141,6 +161,7 @@ impl Component for AppModel {
             selected: None,
             thread_widget,
             main_menu,
+            preferences: None,
         };
 
         let widgets = view_output!();
@@ -149,6 +170,16 @@ impl Component for AppModel {
         widgets.sidebar.connect_activated(move |_sidebar, index| {
             sender_clone.input(AppModelInput::ThreadSelected(index));
         });
+
+        // Register the preferences action here so its handler can reach the
+        // app model (the controller is owned by the model).
+        let prefs_action = gio::SimpleAction::new("preferences", None);
+        let sender_clone = sender.clone();
+        prefs_action.connect_activate(move |_, _| {
+            sender_clone.input(AppModelInput::OpenPreferences);
+        });
+        relm4::main_application().add_action(&prefs_action);
+        relm4::main_application().set_accels_for_action("app.preferences", &["<Primary>comma"]);
 
         ComponentParts { model, widgets }
     }
@@ -221,6 +252,39 @@ impl Component for AppModel {
                     sender.input(AppModelInput::SendDirect { recipient, body });
                 });
             }
+            AppModelInput::ShowError { error } => {
+                let toast = adw::Toast::builder().title(&error).timeout(5).build();
+                widgets.toast_overlay.add_toast(toast);
+            }
+            AppModelInput::OpenPreferences => {
+                // If a dialog is already open, just present it again.
+                if let Some(existing) = &self.preferences {
+                    if let Some(window) = relm4::main_application().active_window() {
+                        existing.widget().present(Some(&window));
+                    }
+                    return;
+                }
+
+                let controller = PreferencesModel::builder().launch(()).detach();
+                let widget = controller.widget().clone();
+
+                // When the dialog is closed, drop the controller so the next open
+                // creates a fresh component (and a fresh connection worker).
+                let sender_clone = sender.clone();
+                widget.connect_closed(move |_| {
+                    sender_clone.input(AppModelInput::PreferencesClosed);
+                });
+
+                if let Some(window) = relm4::main_application().active_window() {
+                    widget.present(Some(&window));
+                }
+
+                self.preferences = Some(controller);
+            }
+
+            AppModelInput::PreferencesClosed => {
+                self.preferences = None;
+            }
         }
     }
 }
@@ -229,7 +293,7 @@ impl AppModel {
     fn handle_worker_output(
         &mut self,
         out: BlueFerryWorkerOutput,
-        _sender: ComponentSender<Self>,
+        sender: ComponentSender<Self>,
         widgets: &mut AppModelWidgets,
     ) {
         match out {
@@ -256,6 +320,7 @@ impl AppModel {
 
             BlueFerryWorkerOutput::Error { method, message } => {
                 eprintln!("{method}: {message}");
+                sender.input(AppModelInput::ShowError { error: message });
             }
 
             BlueFerryWorkerOutput::Contacts(value) => {
